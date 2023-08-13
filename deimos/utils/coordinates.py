@@ -1,159 +1,254 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Some coordinate transformations and the definition of the pathlength used for sidereal LIV
-Created on Tue Jul 18 13:35:29 2023
+CoordTransform: A class for coordinate transformations and path length calculations used for sidereal LIV.
 
-@author: janni
+Created on Tue Jul 18 13:35:29 2023
+Author: janni
 """
 
 import numpy as np
 import astropy.units as u
-from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Angle
-from datetime import datetime, timedelta
-# plt.style.use('/Users/barbaraskrzypek/Documents/IceCube/LVNeutrinos/LV/paper.mplstyle')
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Angle, ICRS, get_sun
+from astropy.time import Time, TimeDelta
 
 class CoordTransform(object):
-    
-    def __init__(self, detector_lat, detector_long, detector_height_m):
-        '''
-        Initialize the CoordTransform object with the location of the detector.
-        
-        Parameters:
-            detector_lat (str or float): Latitude of the detector in degrees or degrees-minutes-seconds format.
-            detector_long (str or float): Longitude of the detector in degrees or degrees-minutes-seconds format.
-            detector_height_m (float): Height of the detector above sea level in meters.
-        '''
+    """
+    CoordTransform class provides methods for coordinate transformations and path length calculations used for sidereal LIV.
 
+    Parameters:
+        detector_lat (str or float): Latitude of the detector in degrees or degrees-minutes-seconds format.
+        detector_long (str or float): Longitude of the detector in degrees or degrees-minutes-seconds format.
+        detector_height_m (float): Height of the detector above sea level in meters.
+    """
+
+    def __init__(self, detector_lat, detector_long, detector_height_m):
         # Convert latitude and longitude to degrees
         if isinstance(detector_lat, str):
             detector_lat = Angle(detector_lat)
             detector_lat = detector_lat.deg
-        #latitude in range [-90,90]
+        # latitude in range [-90,90]
 
         if isinstance(detector_long, str):
             detector_long = Angle(detector_long)
             detector_long = detector_long.deg
-        #longitude in range (-180,180]
+        # longitude in range (-180,180)
 
         self.detector_location = EarthLocation(lat=detector_lat*u.deg, lon=detector_long*u.deg, height=detector_height_m*u.m)
+        self.observer_frame = None
+        self.datetime_obj = None
 
+    def parse_date_string(self, date_str):
+        """
+        Parse the date string and create an Astropy Time object.
 
-    def parse_date_string(
-            self,
-            date_str,
-            utc_offset_hr = 0
-            ):
+        Parameters:
+            date_str (str): Date string in the format "Month day, Year, Hour:Minute(:Second)" (e.g., "July 15, 2023, 14:30").
         
+        Returns:
+            astropy.time.Time: Time object representing the provided date string.
+        """
+
         # Define the format of the input date string with seconds
         date_format = "%B %d, %Y, %H:%M:%S"
         # Try parsing the date string with seconds
         try:
-            datetime_obj = datetime.strptime(date_str, date_format)
-            return datetime_obj
-        
+            datetime_obj = Time.strptime(date_str, date_format)
         except ValueError:
             # If parsing with seconds fails, try parsing without seconds
             date_format_no_seconds = "%B %d, %Y, %H:%M"
             try:
-                datetime_obj = datetime.strptime(date_str, date_format_no_seconds)
-                return datetime_obj
+                datetime_obj = Time.strptime(date_str, date_format_no_seconds)
             except ValueError:
                 raise ValueError("Invalid date format. Please provide a date in the form 'July 15, 2023, 14:30' or 'July 15, 2023, 14:30:25'.")
                 
-        # Adjust datetime_obj with the UTC offset
-        datetime_obj -= timedelta(hours = utc_offset_hr)
+        self.datetime_obj = datetime_obj
+        
+        return datetime_obj
+    
 
-    def get_coszen_and_azimuth(
-            self, 
-            ra, #declination in #deg
-            dec,  #right ascension in #deg
-            date_str, 
-            utc_offset_hr=0):
-        '''
+    def get_coszen_altitude_and_azimuth(self, ra_deg, dec_deg, date_str):
+        """
         Get the cosine of the zenith angle and the azimuth corresponding to the given 
-        declination and right ascension (at the specified date/time). Depends on the detector location
-        '''
+        declination and right ascension (at the specified date/time). Depends on the detector location.
+
+        Parameters:
+            ra_deg (float): Declination in degrees.
+            dec_deg (float): Right ascension in degrees.
+            date_str (str): Date string in the format "Month day, Year, Hour:Minute(:Second)" (e.g., "July 15, 2023, 14:30").
+        
+        Returns:
+            tuple: Tuple containing coszen (cosine of the zenith angle) and azimuth in degrees.
+        """
 
         # Create observation time object
-        date_obj = self.parse_date_string(date_str, utc_offset_hr)
-        #Time creates time object in specific format 
+        if self.datetime_obj is None:
+            date_obj = self.parse_date_string(date_str)
+        else:
+            date_obj = self.datetime_obj
         
         # Create neutrino direction
-        #TODO should this be the opposite direction (e.g. travel direction vs origin direction?)
-        nu_dir = SkyCoord(ra=ra*u.deg, dec=dec*u.deg)
-        #SkyCoord object that is per default in the icrs frame
+        # TODO: should this be the opposite direction (e.g., travel direction vs origin direction?)
+        nu_dir = SkyCoord(ra=ra_deg*u.deg, dec=dec_deg*u.deg, frame='icrs')
+        # SkyCoord object that is per default in the icrs frame
         
         # Convert to local coordinate system (zenith, azimuth)
-        #Coordinate transformation to the horizontal coordinate system. Azimuth is oriented East of North (i.e., N=0, E=90 degrees) 
-        #Altitutde is the angle above horizon
+        # Coordinate transformation to the horizontal coordinate system. Azimuth is oriented East of North (i.e., N=0, E=90 degrees) 
+        # Altitude is the angle above the horizon
         frame = AltAz(obstime=date_obj, location=self.detector_location)
         nu_dir_alt_az = nu_dir.transform_to(frame)
 
         # Get zenith angle and convert to cos(zen)
-        coszen = np.cos( nu_dir_alt_az.zen.to(u.rad).value )
+        coszen = np.cos(nu_dir_alt_az.zen.to(u.rad).value)
+        
+        # Get altitude angle
+        altitude = nu_dir_alt_az.alt.to(u.rad).value
         
         # Get azimuthal angle
-        azimuth = nu_dir_alt_az.az.to(u.deg).value
+        azimuth = nu_dir_alt_az.az.to(u.rad).value
         
-        return coszen, azimuth
+        return coszen, altitude, azimuth
     
     
-    def get_right_ascension_and_declination(
-            self,
-            coszen,
-            azimuth,
-            date_str,
-            utc_offset_hr = 0):
-        '''
-        Get the right ascension and declination corresponding to the given azimuth and zenith angle (cosine of zenith angle)
-        at the specified date/time. Depends on the detector location.
+    def get_right_ascension_and_declination(self, coszen, azimuth, date_str):
+        """
+        Get the right ascension and declination corresponding to the given 
+        cosine of the zenith angle and azimuth (at the specified date/time). Depends on the detector location.
 
         Parameters:
-        coszen (array-like): Cosine of the zenith angle(s) of the neutrinos.
-        azimuth (array-like): Azimuth angle(s) of the neutrinos.
-        date_str (str): Date string in the format "Month day, Year, Hour:Minute(:Second)" (e.g., "July 15, 2023, 14:30").
-        utc_offset_hr (float): UTC offset in hours for the specified location.
-
+            coszen (float): Cosine of the zenith angle.
+            azimuth (float): Azimuth angle in degrees.
+            date_str (str): Date string in the format "Month day, Year, Hour:Minute(:Second)" (e.g., "July 15, 2023, 14:30").
+        
         Returns:
-        tuple: A tuple containing two arrays with the right ascension and declination in degrees.
-        '''
-
+            tuple: Tuple containing right ascension and declination in degrees.
+        """
         # Create observation time object
-        date_obj = self.parse_date_string(date_str,utc_offset_hr)
+        if self.datetime_obj is None:
+            date_obj = self.parse_date_string(date_str)
+        else:
+            date_obj = self.datetime_obj
 
         # Create neutrino direction in AltAz frame
-        nu_dir_alt_az = AltAz(alt=np.arccos(coszen)*u.rad, az=azimuth*u.deg, obstime=date_obj, location=self.detector_location)
-
+        nu_dir_alt_az = AltAz(az=azimuth*u.deg, alt=(np.arccos(coszen)-np.pi/2)*u.rad, obstime=date_obj, location=self.detector_location)
+        
+        icrs_frame_observed = ICRS()
         # Transform back to ICRS frame (right ascension, declination)
-        nu_dir_icrs = nu_dir_alt_az.transform_to('icrs')
-
+        nu_dir_icrs = nu_dir_alt_az.transform_to(icrs_frame_observed)
+    
         # Get right ascension and declination in degrees
         right_ascension = nu_dir_icrs.ra.degree
         declination = nu_dir_icrs.dec.degree
-
+    
         return right_ascension, declination
+
+
+    def get_observer_frame(self,date_str):
+        
+        # Create observation time object
+        if self.datetime_obj is None:
+            date_obj = self.parse_date_string(date_str)
+        else:
+            date_obj = self.datetime_obj
+            
+        self.observer_frame = AltAz(obstime=date_obj, location=self.detector_location)
+        
+        return self.observer_frame
     
-    def path_length(
-            self,
-            coszen, #array-like
-            #Height at which neutrino gets produced (in km above the surface [at 0m altitude] )
-            prodHeight,
-            #Depth at which the detector lies (in km below the surface [at 0m altitude]) 
-            detectorDepth,
-            ):
     
-        '''
+    def rotate_vector_from_ICRS_to_local_AltAz_frame(self,date_str,vec):
+        
+        if self.observer_frame is None:
+            observer_frame = self.get_observer_frame(date_str)
+        else:
+            observer_frame = self.observer_frame
+            
+        # Define the Cartesian coordinates for the unit vectors in the ICRS frame
+        # The x, y, and z coordinates are simply 1 for the respective directions
+        x_unit_vector = 1 * u.dimensionless_unscaled
+        y_unit_vector = 1 * u.dimensionless_unscaled
+        z_unit_vector = 1 * u.dimensionless_unscaled
+        
+        # Initialize the SkyCoord objects for the unit vectors
+        # Use representation_type='cartesian' to specify Cartesian coordinates
+        x_vector_icrs = SkyCoord(x=x_unit_vector, y=0*u.dimensionless_unscaled, z=0*u.dimensionless_unscaled, frame='icrs', representation_type='cartesian')
+        y_vector_icrs = SkyCoord(x=0*u.dimensionless_unscaled, y=y_unit_vector, z=0*u.dimensionless_unscaled, frame='icrs', representation_type='cartesian')
+        z_vector_icrs = SkyCoord(x=0*u.dimensionless_unscaled, y=0*u.dimensionless_unscaled, z=z_unit_vector, frame='icrs', representation_type='cartesian')
+        
+        # Transform unit vectors to the topocentric frame specified by zenith angle and azimuth
+        x_vector_topo = x_vector_icrs.transform_to(observer_frame)
+        y_vector_topo = y_vector_icrs.transform_to(observer_frame)
+        z_vector_topo = z_vector_icrs.transform_to(observer_frame)
+        
+        # Define unit vectors in the topocentric frame theta = 90-alt, azimuth = phi
+        # x = sin(theta) cos(phi)
+        # y = sin(theta) sin(phi)
+        # z = cos(theta)
+        # x_unit_vector_topo = SkyCoord(az=0*u.deg, alt=0*u.deg, frame=observer_frame)
+        # y_unit_vector_topo = SkyCoord(az=90*u.deg, alt=0*u.deg, frame=observer_frame)
+        # z_unit_vector_topo = SkyCoord(az=0*u.deg, alt=90*u.deg, frame=observer_frame)
+        # print(z_unit_vector_topo.cartesian.xyz)
+        # print(z_vector_topo.cartesian.xyz)
+        # Calculate new vector
+        new_vec = np.zeros(vec.shape)
+        # new_vec[0] = vec[0] * np.dot(x_vector_topo.cartesian.xyz, x_unit_vector_topo.cartesian.xyz)
+        # new_vec[1] = vec[1] * np.dot(y_vector_topo.cartesian.xyz, y_unit_vector_topo.cartesian.xyz)
+        # new_vec[2] = vec[2] * np.dot(z_vector_topo.cartesian.xyz, z_unit_vector_topo.cartesian.xyz)
+        new_vec[0] = vec[0] * x_vector_topo.cartesian.xyz[0] + vec[1] * y_vector_topo.cartesian.xyz[0]
+        new_vec[1] = vec[0] * x_vector_topo.cartesian.xyz[1] + vec[1] * y_vector_topo.cartesian.xyz[1]
+        new_vec[2] = vec[0] * x_vector_topo.cartesian.xyz[2] + vec[1] * y_vector_topo.cartesian.xyz[2]
+        
+        return new_vec
+    
+    
+    def get_local_sidereal_time(self, date_str):
+        """
+        Get the local sidereal time corresponding to the given date/time.
+
+        Parameters:
+            date_str (str): Date string in the format "Month day, Year, Hour:Minute(:Second)" (e.g., "July 15, 2023, 14:30").
+        
+        Returns:
+            float: Local sidereal time in degrees.
+        """
+        # Create observation time object
+        date_obj = self.parse_date_string(date_str)
+        # Calculate local sidereal time
+        lst = date_obj.sidereal_time('apparent', longitude=self.detector_location.lon)
+        return lst.to(u.deg).value
+
+    def get_angle_to_aries(self, date_str):
+        """
+        Get the angle between the lines from Earth and the first point of Aries to the Sun at the specified date/time.
+
+        Parameters:
+            date_str (str): Date string in the format "Month day, Year, Hour:Minute(:Second)" (e.g., "July 15, 2023, 14:30").
+        
+        Returns:
+            float: Angle to the first point of Aries in degrees.
+        """
+        # Get the position of the Sun at the specified date/time
+        date_obj = self.parse_date_string(date_str)
+        sun_position = get_sun(date_obj)
+    
+        # Calculate the angle between the lines from Earth and the first point of Aries to the Sun
+        aries = SkyCoord(ra=0*u.deg, dec=0*u.deg, frame='icrs')
+        angle_to_aries = sun_position.separation(aries)
+    
+        return angle_to_aries.to(u.deg).value
+        
+    def path_length(self, coszen, prodHeight, detectorDepth):
+        """
         Calculate the path length of neutrinos from the production height to the detector.
 
         Parameters:
-        coszen (array-like): Cosine of the zenith angle(s) of the neutrinos.
-        prodHeight (float): Height at which the neutrinos are produced above the Earth's surface (in km).
-        detectorDepth (float): Depth at which the detector lies below the Earth's surface (in km).
+            coszen (array-like): Cosine of the zenith angle(s) of the neutrinos.
+            prodHeight (float): Height at which the neutrinos are produced above the Earth's surface (in km).
+            detectorDepth (float): Depth at which the detector lies below the Earth's surface (in km).
 
         Returns:
-        numpy.ndarray: An array containing the path lengths of neutrinos in the same shape as coszen.       
-        '''
+            numpy.ndarray: An array containing the path lengths of neutrinos in the same shape as coszen.       
+        """
         
         # Approximate Earth's radius in km
         rEarth = 6371
