@@ -331,6 +331,7 @@ class OscCalculator(object) :
             self._lightcone_model_kw = None
             self._sme_model_kw = None
             self._neutrino_source_kw = None
+            self.detector_coordinates = None
 
     def set_calc_basis(self, basis) :
 
@@ -515,8 +516,9 @@ class OscCalculator(object) :
 
     def set_detector_location(self,
                               # Detector location in deg
-                              lat, long, height_m,
-                              
+                              lat, 
+                              long, 
+                              height_m,
                               ) :
         # Set detector location
         self.detector_coordinates = CoordTransform(
@@ -524,14 +526,14 @@ class OscCalculator(object) :
             detector_long = long, 
             detector_height_m = height_m
             )
+        
     
     def set_neutrino_source(self,
                             # Date, Time and Timezone
                             date_str,
-                            utc_offset_hr=0,
                             # Location on the sky
-                            ra=None, 
-                            dec=None,
+                            ra_deg=None, 
+                            dec_deg=None,
                             ):
         
         #
@@ -543,29 +545,30 @@ class OscCalculator(object) :
 
         elif self.tool == "deimos" :
             #Set date, time and location of neutrino source
-            coszen_neutrino_source, azimuth_neutrino_source = self.detector_coordinates.get_coszen_and_azimuth(
-                ra = ra, 
-                dec = dec,
-                date_str = date_str, 
-                utc_offset_hr = utc_offset_hr
+            coszen_neutrino_source, altitude_neutrino_source, azimuth_neutrino_source = self.detector_coordinates.get_coszen_altitude_and_azimuth(
+                ra_deg = ra_deg, 
+                dec_deg = dec_deg,
+                date_str = date_str
                 )
-            # deimos.utils.coordinates checks whether the input is correct
+            
             self._neutrino_source_kw = {
                 "time_stamp" : self.detector_coordinates.parse_date_string(
-                    date_str = date_str, 
-                    utc_offset_hr = utc_offset_hr
+                    date_str = date_str
                     ),
                 # Horizontal Coordinate System
                 "coszen" : coszen_neutrino_source,
+                "altitude" : altitude_neutrino_source,
                 "azimuth" : azimuth_neutrino_source,
                 # Equatorial Coordinate System
-                "ra" : ra,
-                "dec" : dec,
-                # Store date_str and utc_offset_hr for skymap
+                "ra" : ra_deg,
+                "dec" : dec_deg,
+                # Store date_str for skymap
                 "date_str" : date_str,
-                "utc_offset_hr": utc_offset_hr,
+                "sidereal_time" : self.detector_coordinates.get_local_sidereal_time(date_str),
+                "angle_to_aries": self.detector_coordinates.get_angle_to_aries(date_str)
             }
-
+         
+            
     def calc_osc_prob(self,
         energy_GeV,
         initial_flavor=None,
@@ -812,9 +815,12 @@ class OscCalculator(object) :
         # DensityMatrixOscSolver doesn't like decending distance values in the input arrays,
         # and this is what you get from coszen arrays often
         flip = False
-        if distance_km[-1] < distance_km[0] : 
-            flip = True
-            distance_km = np.flip(distance_km)
+        if self._sme_model_kw:
+            pass
+        else:
+            if distance_km[-1] < distance_km[0] : 
+                flip = True
+                distance_km = np.flip(distance_km)
 
         # Run solver
         # 'results' has shape [N energy, N distance, N flavor]
@@ -829,6 +835,7 @@ class OscCalculator(object) :
             decoh_opts=self._decoh_model_kw,
             lightcone_opts=self._lightcone_model_kw,
             sme_opts=self._sme_model_kw,
+            detector_opts=self.detector_coordinates,
             neutrino_source_opts=self._neutrino_source_kw,
             verbose=False
         )
@@ -1239,12 +1246,12 @@ class OscCalculator(object) :
     
         # Set title of figure     
         if self._sme_model_kw:
-            fig.suptitle(
-                r"$\delta \sim {:.2f}$".format(dec_0)
-                + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
-                + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
-                + r", $c^X = {:.2e}$".format(c[0])
-                + r", $c^Y = {:.2e}$".format(c[1]),
+            fig.suptitle("SME",
+                # r"$\delta \sim {:.2f}$".format(dec_0)
+                # + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
+                # + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
+                # + r", $c^X = {:.2e}$".format(c[0])
+                # + r", $c^Y = {:.2e}$".format(c[1]),
                 fontsize=14,
             )
         else:
@@ -1374,12 +1381,12 @@ class OscCalculator(object) :
     
         # Set title of figure     
         if self._sme_model_kw:
-            fig.suptitle(
-                r"$\alpha \sim {:.2f}$".format(ra_0)
-                + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
-                + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
-                + r", $c^X = {:.2e}$".format(c[0])
-                + r", $c^Y = {:.2e}$".format(c[1]),
+            fig.suptitle("SME",
+                # r"$\alpha \sim {:.2f}$".format(ra_0)
+                # + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
+                # + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
+                # + r", $c^X = {:.2e}$".format(c[0])
+                # + r", $c^Y = {:.2e}$".format(c[1]),
                 fontsize=14,
             )
         else:
@@ -1509,12 +1516,12 @@ class OscCalculator(object) :
     
         # Set title of figure     
         if self._sme_model_kw:
-            fig.suptitle(
-                r"$\alpha \sim {:.2f}$".format(ra_0)
-                + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
-                + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
-                + r", $c^X = {:.2e}$".format(c[0])
-                + r", $c^Y = {:.2e}$".format(c[1]),
+            fig.suptitle("SME",
+                # r"$\alpha \sim {:.2f}$".format(ra_0)
+                # + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
+                # + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
+                # + r", $c^X = {:.2e}$".format(c[0])
+                # + r", $c^Y = {:.2e}$".format(c[1]),
                 fontsize=14,
             )
         else:
@@ -1656,12 +1663,12 @@ class OscCalculator(object) :
     
         # Set title of figure     
         if self._sme_model_kw:
-            fig.suptitle(
-                r"$\delta \sim {:.2f}$".format(dec_0)
-                + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
-                + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
-                + r", $c^X = {:.2e}$".format(c[0])
-                + r", $c^Y = {:.2e}$".format(c[1]),
+            fig.suptitle("SME",
+                # r"$\delta \sim {:.2f}$".format(dec_0)
+                # + r", $a^X = {:.2e} \, \rm GeV$".format(a_eV[0])
+                # + r", $a^Y = {:.2e} \, \rm GeV$".format(a_eV[1])
+                # + r", $c^X = {:.2e}$".format(c[0])
+                # + r", $c^Y = {:.2e}$".format(c[1]),
                 fontsize=14,
             )
         else:
@@ -1864,7 +1871,7 @@ class OscCalculator(object) :
         # Generate minimal ra and dec to cover all pixels of healpy map
         # Number of pixels of healpy map
         npix = hp.nside2npix(nside=resolution)
-        # Convert pixel to polar coordinates
+        # Convert pixel to polar coordinates (in deg)
         right_ascension_flat, declination_flat = hp.pix2ang(nside=resolution, ipix=np.arange(npix), lonlat=True)
      
         # Store in dictionary for density_matrix_osc_solver
@@ -1873,10 +1880,9 @@ class OscCalculator(object) :
         
         # Calculate corresponding coszen and azimuth values
         coszen_neutrino_source, azimuth_neutrino_source = self.detector_coordinates.get_coszen_and_azimuth(
-            ra = right_ascension_flat, 
-            dec = declination_flat,
+            ra_deg = right_ascension_flat, 
+            dec_deg = declination_flat,
             date_str = self._neutrino_source_kw["date_str"],
-            utc_offset_hr = self._neutrino_source_kw["utc_offset_hr"],
             )
         
         # Store in dictionary for density_matrix_osc_solver
