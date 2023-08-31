@@ -180,25 +180,22 @@ class CoordTransform(object):
         y_vector_topo = y_vector_icrs.transform_to(observer_frame)
         z_vector_topo = z_vector_icrs.transform_to(observer_frame)
         
-        # Define unit vectors in the topocentric frame theta = 90-alt, azimuth = phi
-        # x = sin(theta) cos(phi)
-        # y = sin(theta) sin(phi)
-        # z = cos(theta)
-        # x_unit_vector_topo = SkyCoord(az=0*u.deg, alt=0*u.deg, frame=observer_frame)
-        # y_unit_vector_topo = SkyCoord(az=90*u.deg, alt=0*u.deg, frame=observer_frame)
-        # z_unit_vector_topo = SkyCoord(az=0*u.deg, alt=90*u.deg, frame=observer_frame)
-        # print(z_unit_vector_topo.cartesian.xyz)
-        # print(z_vector_topo.cartesian.xyz)
-        # Calculate new vector
         new_vec = np.zeros(vec.shape)
-        # new_vec[0] = vec[0] * np.dot(x_vector_topo.cartesian.xyz, x_unit_vector_topo.cartesian.xyz)
-        # new_vec[1] = vec[1] * np.dot(y_vector_topo.cartesian.xyz, y_unit_vector_topo.cartesian.xyz)
-        # new_vec[2] = vec[2] * np.dot(z_vector_topo.cartesian.xyz, z_unit_vector_topo.cartesian.xyz)
+        
         new_vec[0] = vec[0] * x_vector_topo.cartesian.xyz[0] + vec[1] * y_vector_topo.cartesian.xyz[0]
         new_vec[1] = vec[0] * x_vector_topo.cartesian.xyz[1] + vec[1] * y_vector_topo.cartesian.xyz[1]
         new_vec[2] = vec[0] * x_vector_topo.cartesian.xyz[2] + vec[1] * y_vector_topo.cartesian.xyz[2]
         
         return new_vec
+    
+    def get_colatitude(self):
+        # Get the latitude of the detector in radians
+        lat_rad = self.detector_location.lat.to(u.rad).value
+        
+        # Calculate the colatitude (90 degrees minus the latitude)
+        colatitude_deg = np.pi/2 - lat_rad
+        
+        return colatitude_deg
     
     
     def get_local_sidereal_time(self, date_str):
