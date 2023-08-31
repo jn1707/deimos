@@ -571,6 +571,11 @@ class DensityMatrixOscSolver(object) :
             sme_c = sme_opts.pop("c") # dimensionless
             ra = neutrino_source_opts.pop("ra")
             dec = neutrino_source_opts.pop("dec")
+            alt_rad = neutrino_source_opts.pop("altitude")
+            az_rad = neutrino_source_opts.pop("azimuth")
+            
+            # Colatitude of the detector
+            colatitude = detector_opts.get_colatitude()
             
             # Convert from degree to radians 
             ra_rad = np.deg2rad(ra)
@@ -745,8 +750,8 @@ class DensityMatrixOscSolver(object) :
                     self.H -= V if nubar else - V 
                     
                 def amplitudes_effecitve_hamiltonian_sme(
-                        ra,
-                        dec,
+                        alt,
+                        az,
                         a_eV_x,
                         a_eV_y,
                         a_eV_z,
@@ -773,13 +778,14 @@ class DensityMatrixOscSolver(object) :
                     """
                     
                     #celestial colatitude and longitude
-                    theta = np.pi/2 + dec 
-                    phi = ra 
+                    theta = np.pi/2 - alt
+                    phi = np.pi - az
+                    print(colatitude)
                     
                     #unit propagation vectors
-                    NX = np.sin(theta) * np.cos(phi)
+                    NX = np.cos(colatitude) * np.sin(theta) * np.cos(phi) + np.sin(colatitude) * np.cos(theta)
                     NY = np.sin(theta) * np.sin(phi)
-                    NZ = np.cos(theta)
+                    NZ = -np.sin(colatitude) * np.sin(theta) * np.cos(phi) + np.cos(colatitude) * np.cos(theta)
                     
                     # amplitudes
                     # the right ascension and declination of a neutrino are measured when detected. 
@@ -816,7 +822,7 @@ class DensityMatrixOscSolver(object) :
                     
                     # Add SME to hamiltoinan
                     if include_sme:
-                        self.As, self.Ac, self.const = amplitudes_effecitve_hamiltonian_sme(ra, dec, a_eV_x, a_eV_y, a_eV_z, E_val, L)
+                        self.As, self.Ac, self.const = amplitudes_effecitve_hamiltonian_sme(alt, az, a_eV_x, a_eV_y, a_eV_z, E_val, L)
                         h_eff = self.Ac + self.const
                         #rotate to mass basis
                         self.h_eff = rho_flav_to_mass_basis(h_eff, PMNS)
@@ -916,7 +922,7 @@ class DensityMatrixOscSolver(object) :
                     # Add SME to hamiltoinan
                     if include_sme:
                         # Caculate the LIV and CPT violating contribution to the Hamiltonian
-                        self.As, self.Ac, self.const = amplitudes_effecitve_hamiltonian_sme(ra, dec, a_eV_x, a_eV_y, a_eV_z, E_val, L)
+                        self.As, self.Ac, self.const = amplitudes_effecitve_hamiltonian_sme(alt, az, a_eV_x, a_eV_y, a_eV_z, E_val, L)
                         h_eff = self.Ac #+ self.const
                         # Rotate to mass basis
                         self.h_eff = rho_flav_to_mass_basis(h_eff, PMNS)
@@ -1072,7 +1078,7 @@ class DensityMatrixOscSolver(object) :
         #and gets the same shape as them (n,). Therefore it cannot be broadcast together with H which has shape (3,3)
         if include_sme and isinstance(ra, np.ndarray):
             
-            for i, (ra, dec) in enumerate(zip(ra_rad, dec_rad)):
+            for i, (alt, az) in enumerate(zip(alt_rad, az_rad)):
                 # Adjust input depending on solver 
                 if self.custom_solver == 'solve_ivp':
                     L_val = L
@@ -1098,7 +1104,6 @@ class DensityMatrixOscSolver(object) :
         # If L_km is not ascending solve for each L_node separately
         elif calc_L_nodes_separately == True:
             for i in range(len(L)):
-                print(i)
                 # Adjust input depending on solver 
                 if self.custom_solver == 'solve_ivp':
                     L_val = L
@@ -1118,13 +1123,13 @@ class DensityMatrixOscSolver(object) :
             
             # Bring array into the same shape and form as without SME options
             osc_prob_results = np.asarray(osc_prob_results)
-            print(osc_prob_results.shape)
+            
             osc_prob_results = np.squeeze(osc_prob_results, axis =2)
             osc_prob_results = np. transpose(osc_prob_results, (1,0,2) )
         
         elif include_sme:
-            ra = ra_rad
-            dec = dec_rad
+            alt = alt_rad
+            az = az_rad
             calc_osc_probs_energy_evolution(osc_probs_fixed_E = osc_prob_results)
             
         else:
