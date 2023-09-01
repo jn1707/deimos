@@ -569,13 +569,16 @@ class DensityMatrixOscSolver(object) :
             sme_opts = copy.deepcopy(sme_opts)
             sme_a = sme_opts.pop("a_eV")
             sme_c = sme_opts.pop("c") # dimensionless
-            ra = neutrino_source_opts.pop("ra")
-            dec = neutrino_source_opts.pop("dec")
-            alt_rad = neutrino_source_opts.pop("altitude")
-            az_rad = neutrino_source_opts.pop("azimuth")
+            
+            ra = neutrino_source_opts["ra"]
+            dec = neutrino_source_opts["dec"]
+            
+            alt_rad = neutrino_source_opts["altitude"]
+            az_rad = neutrino_source_opts["altitude"]
             
             # Colatitude of the detector
-            colatitude = detector_opts.get_colatitude()
+            if detector_opts is not None:
+                colatitude = detector_opts.get_colatitude()
             
             # Convert from degree to radians 
             ra_rad = np.deg2rad(ra)
@@ -780,7 +783,6 @@ class DensityMatrixOscSolver(object) :
                     #celestial colatitude and longitude
                     theta = np.pi/2 - alt
                     phi = np.pi - az
-                    print(colatitude)
                     
                     #unit propagation vectors
                     NX = np.cos(colatitude) * np.sin(theta) * np.cos(phi) + np.sin(colatitude) * np.cos(theta)
